@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  pre-commit:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+    - name: pre-commit
+      uses: pre-commit/action@v3.0.0
+      with:
+        extra_args: --all-files
+
+  clang-tidy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v4
+      with:
+        submodules: true
+
+    - name: Fetch base branch for diff
+      if: github.event_name == 'pull_request'
+      run: git fetch origin ${{ github.base_ref }} --depth=1
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Install project and dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install nanobind
+
+    - name: Run clang-tidy
+      run: |
+        if [ "${{ github.event_name }}" = "pull_request" ]; then
+          python tests/lint/clang_tidy.py --jobs=$(nproc) --diff-base=origin/${{ github.base_ref }}
+        else
+          python tests/lint/clang_tidy.py --jobs=$(nproc)
+        fi
